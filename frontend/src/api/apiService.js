@@ -1,6 +1,10 @@
 // The base URL for your Flask backend API
 const API_URL = 'http://127.0.0.1:5000/api';
 
+const G4DN_API_URL = "http://127.0.0.1:5005"
+
+
+
 /**
  * A helper function to create authorization headers.
  */
@@ -59,19 +63,6 @@ export const logout = () => {
     localStorage.removeItem('role');
     localStorage.removeItem('username');
     return Promise.resolve({ success: true });
-};
-
-/**
- * Starts the frame extraction process for a locally uploaded video.
- */
-export const startFrameExtraction = async (formData, signal) => {
-    const response = await fetchWithAuth(`${API_URL}/frame_extraction`, {
-        method: 'POST',
-        headers: getAuthHeaders(false),
-        body: formData,
-        signal,
-    });
-    return response.json();
 };
 
 /**
@@ -248,6 +239,34 @@ export const getComparisonDates = async () => {
 export const getAllComparisons = async () => {
     const response = await fetchWithAuth(`${API_URL}/comparisons`, {
         headers: getAuthHeaders()
+    });
+    return response.json();
+};
+
+
+/**
+ * starts frameextraction process in g4dn backend.
+ */
+export const startFrameExtraction = async (payload) => {
+	const response = await fetch(`${G4DN_API_URL}/frame-extract`, {
+        method: 'POST',
+		headers: {
+			'Content-Type': 'application/json', 
+		},
+        body: JSON.stringify(payload),
+    });
+    return response.json();
+};
+
+/**
+ * cancel frame extraction
+ */
+export const cancelFrameExtra = async (taskId) => {
+	const response = await fetch(`${G4DN_API_URL}/cancel-task/${taskId}`, {
+        method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
     });
     return response.json();
 };

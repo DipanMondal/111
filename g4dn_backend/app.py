@@ -1,4 +1,5 @@
 from flask import Flask,request,jsonify
+from flask_cors import CORS 
 from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
@@ -14,7 +15,11 @@ from dotenv import load_dotenv
 from utils.yaml_loader import load_yaml
 from utils.celery_worker import frame_extraction_task
 
+load_dotenv()
+
 app=Flask(__name__)
+CORS(app)
+
 
 @app.route('/cancel-task/<task_id>', methods=['POST'])
 def cancel_task(task_id):
@@ -36,7 +41,7 @@ def cancel_task(task_id):
                     'message': f'Task {task_id} marked for revocation, but force-terminate is not supported by current worker pool.'
                 }), 200
         elif state in ['SUCCESS', 'FAILURE', 'REVOKED']:
-            return jsonify({'message': f'Task is already {state.lower()}.'}), 200
+            return jsonify({'message': f'Task is already Ended.'}), 200
         else:
             return jsonify({'error': f'Task cannot be cancelled from state: {state}'}), 400
 
@@ -50,15 +55,35 @@ def cancel_task(task_id):
 def extract():
     data = request.get_json()
     logging.info("Received POST /run-comparison")
-    path = data.get("path")
-    bucket_name = os.getenv("S3_BUCKET_NAME")
+    task_id = None
     try:
+        print(data)
+        date = data.get('date')
+        name = data.get('name')
+        direction = data.get('direction') # 'entry' or 'exit'
+        view = data.get('view')
+        
+        if not all([date, name, direction,view]):
+            return jsonify({'error': 'Missing one or more required parameters: date, name, direction'}), 400
+        if direction not in ['entry', 'exit']:
+            return jsonify({'error': "Invalid direction specified. Use 'entry' or 'exit'."}), 400
+            
+        try:
+            date_obj = datetime.datetime.strptime(date, '%Y-%m-%d')
+            date = date_obj.strftime('%d-%m-%Y')
+        except ValueError:
+            logging.info(f"Error in date formatting : {date}")
+            return jsonify({'error': 'Invalid date format'}), 400
+
+        path = f"{os.getenv("S3_BASE_DIR")}/{date}/{name}/Raw-videos/{view}/{direction}"
+        bucket_name = os.getenv("S3_BUCKET_NAME")
         logging.info("Processing....")
         task = frame_extraction_task.apply_async(args=[bucket_name, path])
+        task_id = task.id
     except Exception as e:
         logging.info(f"ERROR : \n{str(e)}")
         return jsonify({'error': str(e)}), 500
-    return jsonify({'task_id': task.id, 'message': 'Task started'}), 202
+    return jsonify({'task_id': task_id, 'message': 'Task started'}), 202
     
 
 if __name__ == '__main__':

@@ -27,4 +27,20 @@ def generate_presigned_url(bucket, key, expiration=3600):
         Params={'Bucket': bucket, 'Key': key},
         ExpiresIn=expiration
     )
+    
+def check_folder_exists_in_s3(bucket_name,folder_prefix):
+    """
+    Checks existance of only folders in a path
+    """
+    client = get_s3_client()
+    if not folder_prefix.endswith('/'):
+        folder_prefix += '/'
+        
+    response = client.list_objects_v2(
+        Bucket=bucket_name,
+        Prefix=folder_prefix,
+        MaxKeys=1
+    )
+    
+    return 'Contents' in response and len(response['Contents']) > 0
 

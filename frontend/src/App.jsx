@@ -8,6 +8,7 @@ import NewDashboardPage from './pages/NewDashboardPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import DamageCamparison from './pages/DamageCamparison.jsx';
 import RunTopComparison from './pages/RunTopComparison.jsx'; // Import the new component
+import FrameExtraction from './pages/FrameExtraction.jsx';
 
 // Import the single, new layout
 import NewBaseLayout from './components/NewBaseLayout.jsx';
@@ -47,6 +48,7 @@ function App() {
                 <Route path="comparison" element={<DamageCamparison />} />
                 <Route path="run_top_comparison" element={<RunTopComparison />} /> 
                 <Route path="s3_dashboard" element={<S3DashboardPage />} />
+				<Route path="frame_extraction" element={<FrameExtraction/>} />
             </Route>
 
             {/* Fallback route to redirect any unknown paths */}

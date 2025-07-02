@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Celery Configuration
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6380/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis:6380/0')
 
 celery = Celery(
     'tasks',
@@ -41,6 +41,23 @@ celery.conf.update(
 def frame_extraction_task(self, bucket_name:str, path:str):
     self.update_state(state='PENDING', meta={'status': 'Initializing...', 'progress': 0})
     try:
+        s3 = get_s3_client()
+        if not check_folder_exists_in_s3(bucket_name=bucket_name,folder_prefix=path):
+            logger.info(f'No such folder like {path}')
+            return {'status':False, 'message':f'No such folder like {path}'}
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=path)
+        mp4_files = [
+            obj['Key'] for obj in response.get('Contents', [])
+            if obj['Key'].endswith('.mp4') and not obj['Key'].endswith('/')
+        ]
+
+        if not mp4_files:
+            logger.info(f"No video in {path}")
+            return {'status':False, 'message':f"No video in {path}"}
+
+        path = mp4_files[0]  # use the first .mp4 file
+        logger.info(f"Found video file: {path}")
+        
         temp_dir = tempfile.mkdtemp()
         logger.info(f"Downloading video : {path}")
         download_file_from_s3(bucket=bucket_name, s3_key=path, local_path=os.path.join(temp_dir,'video.mp4'))
