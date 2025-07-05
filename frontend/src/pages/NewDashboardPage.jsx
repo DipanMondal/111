@@ -213,8 +213,21 @@ const ComparisonViewModal = ({ isOpen, onClose, entry, view }) => {
                             {wagons.length === 0 ? (
                                 <div className="text-muted">No data found for this view.</div>
                             ) : wagons.map((data, idx) => (
-                                <div key={idx} style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', marginBottom: '2rem', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, background: '#f8fafc', color: '#222' }}>
-                                    <div style={{flex: 2, minWidth: 0, color: '#222'}}>
+                                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'stretch', marginBottom: '2rem', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, background: '#f8fafc', color: '#222' }}>
+                                    {/* Wagon Image on top */}
+                                    <div style={{ width: '100%', textAlign: 'center', marginBottom: '1rem' }}>
+                                        {view === 'top' ? (
+                                            <div><strong>Top Image:</strong><br />
+                                                {data?.image_url ? <img src={data.image_url} alt="Top" style={{maxWidth:'100%',maxHeight:260, borderRadius:8, boxShadow:'0 4px 24px rgba(0,0,0,0.12)'}} /> : <span className="text-muted">No image</span>}
+                                            </div>
+                                        ) : (
+                                            <div><strong>Wagon Image:</strong><br />
+                                                {data?.image_url ? <img src={data.image_url} alt="Wagon" style={{maxWidth:'100%',maxHeight:260, borderRadius:8, boxShadow:'0 4px 24px rgba(0,0,0,0.12)'}} /> : <span className="text-muted">No image</span>}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Table below image */}
+                                    <div style={{ width: '100%' }}>
                                         <h6 style={{marginBottom: '1rem', color:'#1a202c', fontWeight:700}}>Wagon: {data.wagon_id || idx+1}</h6>
                                         {view === 'top' ? (
                                             <table className="table table-sm table-bordered">
@@ -230,17 +243,6 @@ const ComparisonViewModal = ({ isOpen, onClose, entry, view }) => {
                                                 {renderClassCountTable(data)}
                                                 <div className="mb-2" style={{color:'#1a202c', fontWeight:600}}><strong>Generated On:</strong> {data?.generated_on || '-'}</div>
                                             </>
-                                        )}
-                                    </div>
-                                    <div style={{flex: 1, minWidth: 0}}>
-                                        {view === 'top' ? (
-                                            <div><strong>Top Image:</strong><br />
-                                                {data?.image_url ? <img src={data.image_url} alt="Top" style={{maxWidth:'100%',maxHeight:200, borderRadius:8}} /> : <span className="text-muted">No image</span>}
-                                            </div>
-                                        ) : (
-                                            <div><strong>Wagon Image:</strong><br />
-                                                {data?.image_url ? <img src={data.image_url} alt="Wagon" style={{maxWidth:'100%',maxHeight:200, borderRadius:8}} /> : <span className="text-muted">No image</span>}
-                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -290,6 +292,7 @@ const NewDashboardPage = () => {
     const [availableDates, setAvailableDates] = useState([]); // For calendar
     const [selectedDate, setSelectedDate] = useState(null);
     const [filterRange, setFilterRange] = useState('all');
+    const pieChartRef = useRef(null);
     
     const handleOpenComparisonModal = async (trainData) => {
         setSelectedComparisonTrain(trainData);
@@ -407,16 +410,14 @@ const NewDashboardPage = () => {
                 chartInstances.push(chart);
             }
         };
-        
-        const weeklyCtx = document.getElementById('weeklyTrainsChart');
-        if (chartsData.damage_by_date) createChart(weeklyCtx, { type: 'line', data: { labels: chartsData.damage_by_date.labels, datasets: [{ label: 'Trains Processed', data: chartsData.damage_by_date.data, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', tension: 0.4, fill: true }] } });
-        
         const damageCtx = document.getElementById('damageTypesChart');
         if (chartsData.damage_types) createChart(damageCtx, { type: 'doughnut', data: { labels: chartsData.damage_types.labels, datasets: [{ data: chartsData.damage_types.data, backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'], borderWidth: 0 }] }, options: { plugins: { legend: { display: false } } } });
-        
+        // Use ref for pie chart
+        if (pieChartRef.current && chartsData.damage_types) {
+            createChart(pieChartRef.current, { type: 'pie', data: { labels: chartsData.damage_types.labels, datasets: [{ data: chartsData.damage_types.data, backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'], borderWidth: 0 }] }, options: { plugins: { legend: { display: true } } } });
+        }
         const severityCtx = document.getElementById('severityTrendsChart');
         if (chartsData.damage_types) createChart(severityCtx, { type: 'bar', data: { labels: chartsData.damage_types.labels, datasets: [{ label: 'Damage Count', data: chartsData.damage_types.data, backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#dc2626'] }] }, options: { plugins: { legend: { display: false } } } });
-        
         return () => chartInstances.forEach(chart => chart.destroy());
     }, [chartsData]);
 
@@ -488,9 +489,10 @@ const NewDashboardPage = () => {
                     <div className="kpi-card" style={{ minWidth: 0, width: '100%' }}><div className="kpi-header"><span className="kpi-title">Processing Rate</span><div className="kpi-icon primary"><i className="fas fa-tachometer-alt"></i></div></div><div className="kpi-value">{stats?.processing_speed ?? '...'}</div><div className="kpi-change positive"><i className="fas fa-arrow-up"></i><span>Efficiency</span></div></div>
                 </div>
 
-                <div className="charts-section">
-                    <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Weekly Trains Processed</h3></div><div className="chart-container"><canvas id="weeklyTrainsChart"></canvas></div></div>
-                    <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Damage Types Distribution</h3></div><div className="chart-container"><canvas id="damageTypesChart"></canvas></div></div>
+                <div className="charts-section" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: 32 }}>
+                    <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Damage Types Distribution</h3></div><div className="chart-container"><canvas id="damageTypesChart"></canvas>
+                        <div style={{marginTop: 24}}><h4 style={{fontSize:'1.1em',marginBottom:8}}>Pie Chart</h4><canvas ref={pieChartRef} width={320} height={180} style={{display:'block',margin:'0 auto'}}></canvas></div>
+                    </div></div>
                     <div className="chart-card"><div className="chart-header"><h3 className="chart-title">Damage Severity Trends</h3></div><div className="chart-container"><canvas id="severityTrendsChart"></canvas></div></div>
                 </div>
 

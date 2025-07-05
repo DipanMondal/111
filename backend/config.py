@@ -21,6 +21,7 @@ class Config:
     REDIS_HOST = os.environ.get('REDIS_HOST', '127.0.0.1')
     CELERY_BROKER_URL = f"redis://{REDIS_HOST}:6379/0"
     CELERY_RESULT_BACKEND = f"redis://{REDIS_HOST}:6379/0"
+    
 
     # JWT Configuration
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'a-secure-jwt-secret-key'

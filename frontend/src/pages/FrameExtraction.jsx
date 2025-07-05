@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
-import { startFrameExtraction, cancelFrameExtra } from '../api/apiService.js';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { startFrameExtraction, cancelFrameExtra, getG4DNTaskStatus } from '../api/apiService.js';
 
 const FrameExtraction = () => {
     const [clientId, setClientId] = useState('');
@@ -11,41 +11,84 @@ const FrameExtraction = () => {
     const [status, setStatus] = useState('');
     const [error, setError] = useState('');
     const [taskId, setTaskId] = useState(null);
-    const navigate = useNavigate(); // Initialize useNavigate
+    const [progress, setProgress] = useState(0);
+    const [statusText, setStatusText] = useState('');
+    const [extractionResult, setExtractionResult] = useState(null); // New state for the result
+    const pollIntervalRef = useRef(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
-        // Set today's date as default
         const today = new Date().toISOString().split('T')[0];
         setRetrieveDate(today);
+
+        // Cleanup on unmount
+        return () => {
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+            }
+        };
     }, []);
 
     const taskCancel = async () => {
+        if (!taskId) return;
         try {
             const res = await cancelFrameExtra(taskId);
-            setStatus('');
-            setError('');
-            if (res?.message) {
-                setStatus(res.message);
-            } else {
-                setError(res?.error);
-            }
+            setStatus(res?.message || '');
+            setError(res?.error || '');
             setTaskId(null);
-        } catch (err) {
+            clearInterval(pollIntervalRef.current);
+        } catch (err)
+ {
             console.error(err);
-            setError('Error while starting comparison. Please check server logs.');
+            setError('Error while cancelling the task.');
         }
-    }
+    };
+    
+    const pollTaskStatus = (id) => {
+        if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+        }
+
+        pollIntervalRef.current = setInterval(async () => {
+            try {
+                const data = await getG4DNTaskStatus(id);
+                setProgress(data.progress || 0);
+                setStatusText(data.status || 'Processing...');
+
+                if (data.state === 'SUCCESS') {
+                    clearInterval(pollIntervalRef.current);
+                    setStatus('Frame extraction completed successfully!');
+                    setError('');
+                    setTaskId(null);
+                    setExtractionResult(data.result); // Store the result from the backend
+                } else if (data.state === 'FAILURE') {
+                    clearInterval(pollIntervalRef.current);
+                    setError(data.status || 'Task failed.');
+                    setStatus('');
+                    setTaskId(null);
+                }
+            } catch (err) {
+                clearInterval(pollIntervalRef.current);
+                setError('Failed to get task status.');
+                setTaskId(null);
+            }
+        }, 2000);
+    };
+
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (taskId) {
-            setStatus("Already One task is queued. Please Wait for it to finish.");
+            setStatus("Another task is already in progress. Please wait.");
             return;
         }
         setIsLoading(true);
         setStatus('');
         setError('');
+        setExtractionResult(null); // Reset previous results
+        setProgress(0);
+        setStatusText('Starting task...');
 
         const payload = {
             date: retrieveDate,
@@ -53,19 +96,19 @@ const FrameExtraction = () => {
             view: cameraAngle,
 			direction: direction
         };
-		
 
         try {
             const res = await startFrameExtraction(payload);
-            setTaskId(res.task_id);
-            if (res?.message) {
-                setStatus(res.message);
+            if (res.task_id) {
+                setTaskId(res.task_id);
+                setStatus(res.message || 'Task started successfully.');
+                pollTaskStatus(res.task_id);
             } else {
                 setError(res?.error || 'Unknown response from server');
             }
         } catch (err) {
             console.error(err);
-            setError('Error while starting comparison. Please check server logs.');
+            setError('Error while starting the task. Please check server logs.');
         } finally {
             setIsLoading(false);
         }
@@ -122,22 +165,48 @@ const FrameExtraction = () => {
 						</div>
 						
                         <div style={{ flex: '1 1 auto' }}>
-                            <button type="submit" className="action-btn primary w-100" disabled={isLoading}>
-                                {isLoading ? <><span className="spinner-border spinner-border-sm me-2"></span>Processing...</> : <><i className="fas fa-play me-2"></i>Start Process</>}
+                            <button type="submit" className="action-btn primary w-100" disabled={isLoading || taskId}>
+                                {isLoading ? <><span className="spinner-border spinner-border-sm me-2"></span>Starting...</> : <><i className="fas fa-play me-2"></i>Start Process</>}
                             </button>
                         </div>
                     </div>
                 </form>
+                
                 {taskId && (
-                    <div className="mt-3">
-                        <button onClick={() => taskCancel()} className="btn btn-danger">
-                            Cancel Process
-                        </button>
+                    <div className="mt-4">
+                        <h5 className="text-center">Processing Task </h5>
+                        <p className="text-center text-muted">{statusText}</p>
+                        <div className="progress" style={{ height: '20px' }}>
+                            <div
+                                className="progress-bar progress-bar-striped progress-bar-animated"
+                                role="progressbar"
+                                style={{ width: `${progress}%` }}
+                                aria-valuenow={progress}
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                            >
+                                {progress}%
+                            </div>
+                        </div>
+                        <div className="text-center mt-3">
+                            <button onClick={taskCancel} className="btn btn-danger">
+                                Cancel Process
+                            </button>
+                        </div>
                     </div>
                 )}
 
-                {status && <div className="alert alert-success mt-4">{status}</div>}
+
+                {status && !taskId && <div className="alert alert-success mt-4">{status}</div>}
                 {error && <div className="alert alert-danger mt-4">{error}</div>}
+                
+                {extractionResult && (
+                    <div className="alert alert-info mt-4">
+                        <p className="mb-1"><strong>Extraction Result:</strong></p>
+                        <p className="mb-0">Status: {extractionResult.status}</p>
+                        <p className="mb-0">Message: {extractionResult.message}</p>
+                    </div>
+                )}
             </div>
         </div>
     );

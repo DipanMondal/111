@@ -76,8 +76,12 @@ class FrameExtractor:
             frame_idx += 1
             # optional progress callback
             if task and total_frames and frame_idx % 20 == 0:
-                prog = int((frame_idx/total_frames)*90)
-                task.update_state(state='PROGRESS', meta={'progress': prog})
+                prog = int((frame_idx / total_frames) * 95) # Progress based on video traversal
+                status_message = f"Scanned {frame_idx} of {total_frames} frames. Found {saved_count} wagons."
+                task.update_state(
+                    state='PROGRESS',
+                    meta={'progress': prog, 'status': status_message}
+                )
 
             # YOLO inference
             results = self.model(frame, verbose=False, conf=CONF_THR)

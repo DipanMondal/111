@@ -270,3 +270,11 @@ export const cancelFrameExtra = async (taskId) => {
     });
     return response.json();
 };
+
+/**
+ * Polls the status of a Celery task from the g4dn backend.
+ */
+export const getG4DNTaskStatus = async (taskId) => {
+    const response = await fetch(`${G4DN_API_URL}/task-status/${taskId}`);
+    return response.json();
+};

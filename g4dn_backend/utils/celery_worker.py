@@ -40,11 +40,14 @@ celery.conf.update(
 @celery.task(bind=True)
 def frame_extraction_task(self, bucket_name:str, path:str):
     self.update_state(state='PENDING', meta={'status': 'Initializing...', 'progress': 0})
+    temp_dir = tempfile.mkdtemp()
     try:
         s3 = get_s3_client()
         if not check_folder_exists_in_s3(bucket_name=bucket_name,folder_prefix=path):
             logger.info(f'No such folder like {path}')
-            return {'status':False, 'message':f'No such folder like {path}'}
+            # Raise an exception for logical errors
+            raise FileNotFoundError(f'No Data available')
+
         response = s3.list_objects_v2(Bucket=bucket_name, Prefix=path)
         mp4_files = [
             obj['Key'] for obj in response.get('Contents', [])
@@ -53,30 +56,33 @@ def frame_extraction_task(self, bucket_name:str, path:str):
 
         if not mp4_files:
             logger.info(f"No video in {path}")
-            return {'status':False, 'message':f"No video in {path}"}
+            # Raise an exception for logical errors
+            raise FileNotFoundError(f"No video in this path")
 
-        path = mp4_files[0]  # use the first .mp4 file
-        logger.info(f"Found video file: {path}")
+        video_s3_key = mp4_files[0]  # use the first .mp4 file
+        logger.info(f"Found video file: {video_s3_key}")
         
-        temp_dir = tempfile.mkdtemp()
-        logger.info(f"Downloading video : {path}")
-        download_file_from_s3(bucket=bucket_name, s3_key=path, local_path=os.path.join(temp_dir,'video.mp4'))
+        logger.info(f"Downloading video : {video_s3_key}")
+        local_video_path = os.path.join(temp_dir, 'video.mp4')
+        download_file_from_s3(bucket=bucket_name, s3_key=video_s3_key, local_path=local_video_path)
         logger.info(f"Downloaded..")
         
-        logger.info(f"Extracting video : {path}")
+        logger.info(f"Extracting video : {video_s3_key}")
         extractor = FrameExtractor()
-        s3_video_dir = os.path.dirname(path)
+        s3_video_dir = os.path.dirname(video_s3_key)
         output_path = s3_video_dir.replace('/Raw-videos/','/Processed_Frames/')
         
         logger.info(f"save path : {output_path}")
-        num = extractor.extract_wagon_frames(video_path=os.path.join(temp_dir,'video.mp4'), s3_save_path=output_path, bucket_name=bucket_name)
+        num_frames = extractor.extract_wagon_frames(video_path=local_video_path, s3_save_path=output_path, bucket_name=bucket_name, task=self)
         
+        self.update_state(state='SUCCESS' , meta={'status': f'Analysis complete. Identified and saved {num_frames} unique wagons.', 'progress': 100})
+        return {'status': 'Success', 's3_path': output_path, 'message': f"Identified and saved {num_frames} unique wagon frames."}
+    except Exception as e:
+        logger.error(f"Error during frame extraction: {str(e)}", exc_info=True)
+        # Re-raise the exception. Celery will catch it, set the state to FAILURE,
+        # and store the exception details correctly.
+        raise e
+    finally:
+        # Ensure the temporary directory is always cleaned up
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
-        
-        self.update_state(state='SUCCESS' if status else 'FAILED', meta={'status': 'Success' if status else 'failed','processed': 100})
-        return {'status': status, 'message': f"Saved {num} frames"}
-    except Exception as e:
-        logging.error(f"Error during comparison: {str(e)}")
-        self.update_state(state='FAILED',meta={'status'})
-        return {'status': False, 'message': str(e)}

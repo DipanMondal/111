@@ -1,5 +1,5 @@
 from flask import Flask,request,jsonify
-from flask_cors import CORS 
+from flask_cors import CORS
 from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
@@ -28,7 +28,7 @@ def cancel_task(task_id):
         result = AsyncResult(task_id, app=celery)
         state = result.state
 
-        if state in ['PENDING', 'RECEIVED', 'STARTED']:
+        if state in ['PENDING', 'RECEIVED', 'STARTED', 'PROGRESS']:
             # Attempt to revoke and terminate the task if supported
             try:
                 result.revoke(terminate=True, signal=signal.SIGTERM)
@@ -49,6 +49,32 @@ def cancel_task(task_id):
         logging.error(f"Failed to revoke task {task_id}: {str(e)}", exc_info=True)
         return jsonify({'error': f'Failed to cancel task: {str(e)}'}), 500
 
+@app.route('/task-status/<task_id>', methods=['GET'])
+def task_status(task_id):
+    """Gets the status of a Celery task."""
+    task = AsyncResult(task_id, app=celery)
+    response = {'state': task.state}
+
+    if task.state == 'PENDING':
+        response.update({'status': 'Pending...', 'progress': 0})
+    elif task.state == 'PROGRESS':
+        response.update(task.info or {})
+    elif task.state == 'SUCCESS':
+        response.update(task.info or {})
+        response['result'] = task.result
+    elif task.state == 'FAILURE':
+        # When a task fails by raising an exception, task.info contains the exception object.
+        # We convert it to a string to send it as a JSON response.
+        response.update({
+            'status': str(task.info),
+            'error': True,
+            'progress': 100
+        })
+    else:
+        # Handle other states like REVOKED
+        response.update({'status': task.state, 'progress': 100})
+
+    return jsonify(response)
 
 
 @app.route('/frame-extract',methods=['POST'])
@@ -62,12 +88,12 @@ def extract():
         name = data.get('name')
         direction = data.get('direction') # 'entry' or 'exit'
         view = data.get('view')
-        
+
         if not all([date, name, direction,view]):
             return jsonify({'error': 'Missing one or more required parameters: date, name, direction'}), 400
         if direction not in ['entry', 'exit']:
             return jsonify({'error': "Invalid direction specified. Use 'entry' or 'exit'."}), 400
-            
+
         try:
             date_obj = datetime.datetime.strptime(date, '%Y-%m-%d')
             date = date_obj.strftime('%d-%m-%Y')
@@ -84,11 +110,9 @@ def extract():
         logging.info(f"ERROR : \n{str(e)}")
         return jsonify({'error': str(e)}), 500
     return jsonify({'task_id': task_id, 'message': 'Task started'}), 202
-    
+
 
 if __name__ == '__main__':
     load_dotenv()
     port = load_yaml()['app']['port']
     app.run(debug=True, port=port)
-	
-	
